@@ -1,0 +1,86 @@
+#!/bin/bash
+
+# Fuzzy-pick any GitHub repo you can access and open it in the browser.
+# Repo list is cached (the full fetch can take ~20s); a stale cache is shown
+# immediately and refreshed in the background.
+#
+#   omarchy-github-repos            pick a repo, open it
+#   omarchy-github-repos --refresh  rebuild the cache and exit
+#
+# Hide owners/orgs you never want to see by listing them, one per line, in
+#   ~/.config/omarchy-github/exclude     (lines starting with # are comments)
+
+set -uo pipefail
+
+cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}/omarchy-github"
+cache="$cache_dir/repos.tsv"
+exclude_file="${XDG_CONFIG_HOME:-$HOME/.config}/omarchy-github/exclude"
+max_age=$((6 * 3600))
+mkdir -p "$cache_dir"
+
+# Build a grep pattern file from the exclude list ("owner" -> "^owner/").
+exclude_patterns() {
+  [[ -f $exclude_file ]] || return 0
+  sed -e 's/#.*//' -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' "$exclude_file" |
+    awk 'NF { gsub(/[][\\.^$*+?(){}|]/, "\\\\&"); print "^" $0 "/" }'
+}
+
+refresh() {
+  local tmp patterns
+  tmp=$(mktemp "$cache_dir/repos.XXXXXX")
+  patterns=$(mktemp "$cache_dir/patterns.XXXXXX")
+  if gh api --paginate 'user/repos?affiliation=owner,collaborator,organization_member&per_page=100' \
+    --jq '.[] | [.full_name, (.private|tostring), (.archived|tostring), (.description // "" | gsub("[\t\n\r]"; " "))] | @tsv' >"$tmp" \
+    && [[ -s $tmp ]]; then
+    exclude_patterns >"$patterns"
+    if [[ -s $patterns ]]; then
+      grep -v -i -f "$patterns" "$tmp" >"$tmp.f"
+      mv "$tmp.f" "$tmp"
+    fi
+    # Active repos first, archived last; alphabetical within each group.
+    sort -t$'\t' -k3,3 -k1,1f "$tmp" >"$cache"
+    rm -f "$tmp" "$patterns"
+  else
+    rm -f "$tmp" "$patterns"
+    return 1
+  fi
+}
+
+if [[ ${1:-} == --refresh ]]; then
+  refresh
+  exit
+fi
+
+if ! command -v gh >/dev/null || ! gh auth status >/dev/null 2>&1; then
+  omarchy-notification-send -u critical "GitHub" "GitHub CLI not ready — install gh and run: gh auth login"
+  exit 1
+fi
+
+# Rebuild when the exclude list changed since the cache was written.
+if [[ -s $cache && -f $exclude_file && $exclude_file -nt $cache ]]; then
+  rm -f "$cache"
+fi
+
+if [[ ! -s $cache ]]; then
+  omarchy-notification-send "GitHub" "Fetching repo list (first run can take ~20s)…"
+  refresh || {
+    omarchy-notification-send -u critical "GitHub" "Could not fetch repositories"
+    exit 1
+  }
+elif (( $(date +%s) - $(stat -c %Y "$cache") > max_age )); then
+  (setsid "$0" --refresh >/dev/null 2>&1 &)
+fi
+
+# "<glyph><TAB><label><TAB><subtext>" — the picker returns "<label><TAB><subtext>".
+options=()
+while IFS=$'\t' read -r name private archived desc; do
+  if [[ $private == true ]]; then glyph=$''; else glyph=$''; fi
+  [[ $archived == true ]] && desc="[archived] $desc"
+  options+=("$glyph"$'\t'"$name"$'\t'"${desc:- }")
+done <"$cache"
+
+choice=$(omarchy-menu-select "GitHub" "${options[@]}" -- --width 900) || exit 0
+repo=${choice%%$'\t'*}
+[[ -n $repo ]] || exit 0
+
+exec omarchy-launch-browser "https://github.com/$repo"
