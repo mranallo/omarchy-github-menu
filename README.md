@@ -13,7 +13,7 @@ Public and private repos get different icons, descriptions are shown under each 
 ## Install
 
 ```bash
-git clone <this repo> && cd omarchy-github-menu
+git clone https://github.com/mranallo/omarchy-github-menu.git && cd omarchy-github-menu
 ./install.sh                # script + menu row
 ./install.sh --keybinding   # same, plus SUPER + CTRL + G
 ```
