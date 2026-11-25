@@ -4,6 +4,10 @@ Adds a **GitHub** row to the [Omarchy](https://omarchy.org/) menu. Select it to 
 
 Public and private repos get different icons, descriptions are shown under each name, and archived repos sort to the bottom.
 
+![GitHub repo picker in the Omarchy menu](docs/screenshot.png)
+
+*(Example repos shown; the `acme/*` entries are made up to show the private and archived styles.)*
+
 ## Requirements
 
 - Omarchy
