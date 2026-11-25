@@ -45,8 +45,8 @@ omarchy-github-repos --refresh
 List owners or orgs, one per line, in `~/.config/omarchy-github/exclude`:
 
 ```
-# legacy org, mostly archived
-ministrycentered
+# an org you never need to see
+acme-legacy
 ```
 
 The cache rebuilds the next time you open the picker after editing the file.
